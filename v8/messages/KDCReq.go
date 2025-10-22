@@ -175,6 +175,31 @@ func NewUser2UserTGSReq(cname types.PrincipalName, kdcRealm string, c *config.Co
 	return a, err
 }
 
+// NewS4U2ProxyTGSReq returns a TGS-REQ suitable for obtaining a proxy ticket on behalf of some user.
+// userTicket must be a forwardable ticket for the user.
+func NewS4U2ProxyTGSReq(cname types.PrincipalName, kdcRealm string, c *config.Config, clientTGT Ticket, sessionKey types.EncryptionKey, sname types.PrincipalName, renewal bool, userTicket Ticket) (TGSReq, error) {
+	a, err := tgsReq(cname, sname, kdcRealm, renewal, c)
+	if err != nil {
+		return a, err
+	}
+	a.ReqBody.AdditionalTickets = []Ticket{
+		// ensure we don't include the decrypted enc part in the marshaled ticket.
+		{
+			TktVNO:  userTicket.TktVNO,
+			Realm:   userTicket.Realm,
+			SName:   userTicket.SName,
+			EncPart: userTicket.EncPart,
+		},
+	}
+	types.SetFlag(&a.ReqBody.KDCOptions, flags.CnameInAddlTkt)
+	err = a.setPAData(clientTGT, sessionKey)
+	if err != nil {
+		return a, err
+	}
+	err = a.setPAPACOptions(patype.PA_PAC_OPTION_RESOURCE_BASED_CONSTRAINED_DELEGATION)
+	return a, err
+}
+
 // tgsReq populates the fields for a TGS_REQ
 func tgsReq(cname, sname types.PrincipalName, kdcRealm string, renewal bool, c *config.Config) (TGSReq, error) {
 	nonce, err := rand.Int(rand.Reader, big.NewInt(math.MaxInt32))
@@ -266,6 +291,26 @@ func (k *TGSReq) setPAData(tgt Ticket, sessionKey types.EncryptionKey) error {
 			PADataValue: apb,
 		},
 	}
+	return nil
+}
+
+func (k *TGSReq) setPAPACOptions(bits ...int) error {
+	papacOptions := types.PAPACOptions{
+		Flags: types.NewKrbFlags(),
+	}
+	for _, b := range bits {
+		types.SetFlag(&(papacOptions.Flags), b)
+	}
+	opts, err := asn1.Marshal(papacOptions)
+	if err != nil {
+		return krberror.Errorf(err, krberror.EncodingError, "error marshaling PAC options for TGS request")
+	}
+	k.PAData = append(k.PAData,
+		types.PAData{
+			PADataType:  patype.PA_PAC_OPTIONS,
+			PADataValue: opts,
+		},
+	)
 	return nil
 }
 

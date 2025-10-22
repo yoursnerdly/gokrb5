@@ -300,3 +300,45 @@ func NewNegTokenInitKRB5(cl *client.Client, tkt messages.Ticket, sessionKey type
 		MechTokenBytes: mtb,
 	}, nil
 }
+
+// NewNegTokenRespKRB5 creates a new Resp negotiation token for Kerberos 5
+// from a validated APReq message.
+func NewNegTokenRespKRB5(apReq messages.APReq) (NegTokenResp, error) {
+	var n NegTokenResp
+	aprep, err := messages.NewAPRep(apReq)
+	if err != nil {
+		return n, fmt.Errorf("failed to create APRep: %w", err)
+	}
+	mt, err := NewKRB5TokenAPREP(aprep)
+	if err != nil {
+		return n, fmt.Errorf("failed to create KRB5 token APREP: %w", err)
+	}
+	mtb, err := mt.Marshal()
+	if err != nil {
+		return n, fmt.Errorf("failed to marshal KRB5 token APREP: %w", err)
+	}
+	n = NegTokenResp{
+		NegState:      asn1.Enumerated(NegStateAcceptCompleted),
+		ResponseToken: mtb,
+		SupportedMech: gssapi.OIDMSLegacyKRB5.OID(),
+	}
+	return n, nil
+}
+
+// NewNegTokenInitKRB5 creates new Init negotiation token for Kerberos 5 using a proxy ticket
+func NewNegTokenInitProxyKRB5(
+	tkt messages.Ticket, sessionKey types.EncryptionKey, realm string, cname types.PrincipalName, APOptions []int,
+) (NegTokenInit, error) {
+	mt, err := NewKRB5TokenProxyAPREQ(tkt, sessionKey, realm, cname, []int{gssapi.ContextFlagInteg, gssapi.ContextFlagConf}, APOptions)
+	if err != nil {
+		return NegTokenInit{}, fmt.Errorf("error getting KRB5 token; %v", err)
+	}
+	mtb, err := mt.Marshal()
+	if err != nil {
+		return NegTokenInit{}, fmt.Errorf("error marshalling KRB5 token; %v", err)
+	}
+	return NegTokenInit{
+		MechTypes:      []asn1.ObjectIdentifier{gssapi.OIDKRB5.OID()},
+		MechTokenBytes: mtb,
+	}, nil
+}

@@ -153,3 +153,7 @@ func (pa *PAData) GetETypeInfo2() (d ETypeInfo2, err error) {
 	_, err = asn1.Unmarshal(pa.PADataValue, &d)
 	return
 }
+
+type PAPACOptions struct {
+	Flags asn1.BitString `asn1:"explicit,tag:0"`
+}

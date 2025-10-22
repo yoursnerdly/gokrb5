@@ -11,6 +11,7 @@ import (
 	"github.com/jcmturner/gokrb5/v8/client"
 	"github.com/jcmturner/gokrb5/v8/gssapi"
 	"github.com/jcmturner/gokrb5/v8/keytab"
+	"github.com/jcmturner/gokrb5/v8/messages"
 	"github.com/jcmturner/gokrb5/v8/service"
 )
 
@@ -54,6 +55,24 @@ func (s *SPNEGO) InitSecContext() (gssapi.ContextToken, error) {
 		return &SPNEGOToken{}, err
 	}
 	negTokenInit, err := NewNegTokenInitKRB5(s.client, tkt, key)
+	if err != nil {
+		return &SPNEGOToken{}, fmt.Errorf("could not create NegTokenInit: %v", err)
+	}
+	return &SPNEGOToken{
+		Init:         true,
+		NegTokenInit: negTokenInit,
+		settings:     s.serviceSettings,
+	}, nil
+}
+
+// InitProxySecContext is the GSS-API method for the client to generate a proxy token for the
+// service, using a user's verified forwardable ticket.
+func (s *SPNEGO) InitProxySecContext(userTicket messages.Ticket, opts []int) (gssapi.ContextToken, error) {
+	tkt, key, err := s.client.GetProxyTicket(s.spn, userTicket)
+	if err != nil {
+		return &SPNEGOToken{}, err
+	}
+	negTokenInit, err := NewNegTokenInitProxyKRB5(tkt, key, userTicket.DecryptedEncPart.CRealm, userTicket.DecryptedEncPart.CName, opts)
 	if err != nil {
 		return &SPNEGOToken{}, fmt.Errorf("could not create NegTokenInit: %v", err)
 	}
