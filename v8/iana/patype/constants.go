@@ -74,10 +74,10 @@ const (
 	//UNASSIGNED : 151-164
 	PA_SUPPORTED_ETYPES int32 = 165
 	PA_EXTENDED_ERROR   int32 = 166
-	PA_PAC_OPTIONS      int32 = 167 // MS Specific extension
+	PA_PAC_OPTIONS      int32 = 167 // Microsoft extension (MS-KILE)
 )
 
-// MS specific PA PAC option bits
+// Microsoft extension - MS-KILE, MS-SFU
 const (
 	PA_PAC_OPTION_CLAIMS                                int = 0
 	PA_PAC_OPTION_BRANCH_AWARE                          int = 1

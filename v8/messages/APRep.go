@@ -45,20 +45,17 @@ func NewAPRep(req APReq) (APRep, error) {
 		CTime:          req.Authenticator.CTime.UTC(),
 		Cusec:          req.Authenticator.Cusec,
 		SequenceNumber: seq.Int64() & 0x3fffffff,
-		Subkey:         req.Authenticator.SubKey,
+		Subkey:         req.Authenticator.SubKey, // confirm request subkey if any.
 	}
 	fmt.Printf("Creating EncAPRepPart: %#v\n", encAPRepPart)
 	b, err := encAPRepPart.Marshal()
 	if err != nil {
 		return a, err
 	}
-	fmt.Printf("Marshaled EncAPRepPart: %v\n", b)
-	fmt.Printf("Encrypting EncAPRepPart with key %#v\n", key)
 	ed, err := crypto.GetEncryptedData(b, key, usage, 0)
 	if err != nil {
 		return a, err
 	}
-	fmt.Printf("encrypted EncAPRepPart: %#v\n", ed)
 
 	a = APRep{
 		PVNO:    5,

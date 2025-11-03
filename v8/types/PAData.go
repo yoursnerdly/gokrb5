@@ -154,6 +154,7 @@ func (pa *PAData) GetETypeInfo2() (d ETypeInfo2, err error) {
 	return
 }
 
+// PAPACOptions represents the PAC options in the PAData - Microsoft extension (MS-KILE).
 type PAPACOptions struct {
 	Flags asn1.BitString `asn1:"explicit,tag:0"`
 }

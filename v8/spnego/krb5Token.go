@@ -179,7 +179,7 @@ func NewKRB5TokenAPREP(aprep messages.APRep) (KRB5Token, error) {
 	return m, nil
 }
 
-// NewKRB5TokenProxyAPREQ creates a new KRB5 token with AP_REQ with a proxy ticket.
+// NewKRB5TokenProxyAPREQ creates a new KRB5 token with AP_REQ for a proxy ticket.
 func NewKRB5TokenProxyAPREQ(tkt messages.Ticket, sessionKey types.EncryptionKey, realm string, cname types.PrincipalName, GSSAPIFlags []int, APOptions []int) (KRB5Token, error) {
 	var m KRB5Token
 	m.OID = gssapi.OIDKRB5.OID()

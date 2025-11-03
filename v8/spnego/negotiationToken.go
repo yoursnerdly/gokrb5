@@ -302,9 +302,22 @@ func NewNegTokenInitKRB5(cl *client.Client, tkt messages.Ticket, sessionKey type
 }
 
 // NewNegTokenRespKRB5 creates a new Resp negotiation token for Kerberos 5
-// from a validated APReq message.
-func NewNegTokenRespKRB5(apReq messages.APReq) (NegTokenResp, error) {
+// from an incoming SPNego init token and validated APReq message.
+func NewNegTokenRespKRB5(ct gssapi.ContextToken, apReq messages.APReq) (NegTokenResp, error) {
 	var n NegTokenResp
+
+	t, ok := ct.(*SPNEGOToken)
+	if !ok {
+		return n, errors.New("context token provided was not an SPNEGO token")
+	}
+	if !t.Init {
+		return n, errors.New("SPNEGO token provided was not a NegTokenInit")
+	}
+	var oid asn1.ObjectIdentifier
+	if t.Init {
+		oid = t.NegTokenInit.MechTypes[0]
+	}
+
 	aprep, err := messages.NewAPRep(apReq)
 	if err != nil {
 		return n, fmt.Errorf("failed to create APRep: %w", err)
@@ -320,7 +333,7 @@ func NewNegTokenRespKRB5(apReq messages.APReq) (NegTokenResp, error) {
 	n = NegTokenResp{
 		NegState:      asn1.Enumerated(NegStateAcceptCompleted),
 		ResponseToken: mtb,
-		SupportedMech: gssapi.OIDMSLegacyKRB5.OID(),
+		SupportedMech: oid,
 	}
 	return n, nil
 }

@@ -246,13 +246,6 @@ func (k *ASRep) DecryptEncPart(c *credentials.Credentials) (types.EncryptionKey,
 
 // Verify checks the validity of AS_REP message.
 func (k *ASRep) Verify(cfg *config.Config, creds *credentials.Credentials, asReq ASReq) (bool, error) {
-	//Ref RFC 4120 Section 3.1.5
-	// if !k.CName.Equal(asReq.ReqBody.CName) {
-	// 	return false, krberror.NewErrorf(krberror.KRBMsgError, "CName in response does not match what was requested. Requested: %+v; Reply: %+v", asReq.ReqBody.CName, k.CName)
-	// }
-	// if k.CRealm != asReq.ReqBody.Realm {
-	// 	return false, krberror.NewErrorf(krberror.KRBMsgError, "CRealm in response does not match what was requested. Requested: %s; Reply: %s", asReq.ReqBody.Realm, k.CRealm)
-	// }
 	key, err := k.DecryptEncPart(creds)
 	if err != nil {
 		return false, krberror.Errorf(err, krberror.DecryptingError, "error decrypting EncPart of AS_REP")
@@ -318,6 +311,7 @@ func (k *TGSRep) DecryptEncPart(key types.EncryptionKey) error {
 
 // Verify checks the validity of the TGS_REP message.
 func (k *TGSRep) Verify(cfg *config.Config, tgsReq TGSReq) (bool, error) {
+	// CName and realm may not match in case of S4U2Self or S4U2Proxy requests.
 	// if !k.CName.Equal(tgsReq.ReqBody.CName) {
 	// 	return false, krberror.NewErrorf(krberror.KRBMsgError, "CName in response does not match what was requested. Requested: %+v; Reply: %+v", tgsReq.ReqBody.CName, k.CName)
 	// }

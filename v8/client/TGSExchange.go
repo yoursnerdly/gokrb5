@@ -148,6 +148,7 @@ func (cl *Client) GetProxyTicket(spn string, userTicket messages.Ticket) (messag
 	if err != nil {
 		return tkt, skey, krberror.Errorf(err, krberror.KRBMsgError, "TGS Exchange Error: failed to generate a new S4U2Proxy TGS_REQ")
 	}
+	// do not cache proxy tickets.
 	_, tgsRep, err := cl.TGSExchangeNoCache(tgsReq, realm, tgt, skey, 0)
 	if err != nil {
 		return tkt, skey, err

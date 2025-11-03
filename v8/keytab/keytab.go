@@ -156,7 +156,9 @@ func (kt *Keytab) AddEntry(principalName, realm, password string, ts time.Time, 
 	return nil
 }
 
-// AddEntryWithKey adds an entry to the keytab with the given key.
+// AddEntryWithKey adds an entry to the keytab with the given key. This is needed when the key is associated
+// with a user that may be associated with multiple SPNs. The same key is then needed for each of those
+// SPNs.
 func (kt *Keytab) AddEntryWithKey(principalName, realm string, key types.EncryptionKey, ts time.Time, KVNO uint8) {
 	// Generate a key from the password
 	princ, _ := types.ParseSPNString(principalName)
