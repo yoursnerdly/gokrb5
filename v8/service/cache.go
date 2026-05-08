@@ -2,127 +2,70 @@
 package service
 
 import (
-	"github.com/jcmturner/gokrb5/v8/types"
+	"errors"
+	"fmt"
+	"net/url"
+	"strconv"
 	"sync"
 	"time"
+
+	"github.com/jcmturner/gokrb5/v8/rcache"
+	"github.com/jcmturner/gokrb5/v8/types"
 )
 
 // Replay cache is required as specified in RFC 4120 section 3.2.3
 
-// Cache for tickets received from clients keyed by fully qualified client name. Used to track replay of tickets.
-type Cache struct {
-	entries map[string]clientEntries
-	mux     sync.RWMutex
-}
+var (
+	globalCacheMu  sync.Mutex
+	globalCacheSet bool
 
-// clientEntries holds entries of client details sent to the service.
-type clientEntries struct {
-	replayMap map[time.Time]replayCacheEntry
-	seqNumber int64
-	subKey    types.EncryptionKey
-}
+	// replayCache is the process-wide replay cache.
+	replayCache rcache.Cache
+)
 
-// Cache entry tracking client time values of tickets sent to the service.
-type replayCacheEntry struct {
-	presentedTime time.Time
-	sName         types.PrincipalName
-	cTime         time.Time // This combines the ticket's CTime and Cusec
-}
+var (
+	// ErrReplayCacheAlreadyInUse indicates SetReplayCache was called after the replay cache was initialized.
+	ErrReplayCacheAlreadyInUse = errors.New("service: replay cache already in use")
 
-func (c *Cache) getClientEntries(cname types.PrincipalName) (clientEntries, bool) {
-	c.mux.RLock()
-	defer c.mux.RUnlock()
-	ce, ok := c.entries[cname.PrincipalNameString()]
-	return ce, ok
-}
+	// ErrReplayCacheNil indicates SetReplayCache was called with a nil cache implementation.
+	ErrReplayCacheNil = errors.New("service: replay cache is nil")
+)
 
-func (c *Cache) getClientEntry(cname types.PrincipalName, t time.Time) (replayCacheEntry, bool) {
-	if ce, ok := c.getClientEntries(cname); ok {
-		c.mux.RLock()
-		defer c.mux.RUnlock()
-		if e, ok := ce.replayMap[t]; ok {
-			return e, true
-		}
+// SetReplayCache configures the process-wide replay cache.
+// It must be called before any call to GetReplayCache.
+func SetReplayCache(rc rcache.Cache) error {
+	globalCacheMu.Lock()
+	defer globalCacheMu.Unlock()
+
+	if rc == nil {
+		return ErrReplayCacheNil
 	}
-	return replayCacheEntry{}, false
-}
-
-// Instance of the ServiceCache. This needs to be a singleton.
-var replayCache Cache
-var once sync.Once
-
-// GetReplayCache returns a pointer to the Cache singleton.
-func GetReplayCache(d time.Duration) *Cache {
-	// Create a singleton of the ReplayCache and start a background thread to regularly clean out old entries
-	once.Do(func() {
-		replayCache = Cache{
-			entries: make(map[string]clientEntries),
-		}
-		go func() {
-			for {
-				// TODO consider using a context here.
-				time.Sleep(d)
-				replayCache.ClearOldEntries(d)
-			}
-		}()
-	})
-	return &replayCache
-}
-
-// AddEntry adds an entry to the Cache.
-func (c *Cache) AddEntry(sname types.PrincipalName, a types.Authenticator) {
-	ct := a.CTime.Add(time.Duration(a.Cusec) * time.Microsecond)
-	if ce, ok := c.getClientEntries(a.CName); ok {
-		c.mux.Lock()
-		defer c.mux.Unlock()
-		ce.replayMap[ct] = replayCacheEntry{
-			presentedTime: time.Now().UTC(),
-			sName:         sname,
-			cTime:         ct,
-		}
-		ce.seqNumber = a.SeqNumber
-		ce.subKey = a.SubKey
-	} else {
-		c.mux.Lock()
-		defer c.mux.Unlock()
-		c.entries[a.CName.PrincipalNameString()] = clientEntries{
-			replayMap: map[time.Time]replayCacheEntry{
-				ct: {
-					presentedTime: time.Now().UTC(),
-					sName:         sname,
-					cTime:         ct,
-				},
-			},
-			seqNumber: a.SeqNumber,
-			subKey:    a.SubKey,
-		}
+	if globalCacheSet {
+		return ErrReplayCacheAlreadyInUse
 	}
+
+	replayCache = rc
+	globalCacheSet = true
+	return nil
 }
 
-// ClearOldEntries clears entries from the Cache that are older than the duration provided.
-func (c *Cache) ClearOldEntries(d time.Duration) {
-	c.mux.Lock()
-	defer c.mux.Unlock()
-	for ke, ce := range c.entries {
-		for k, e := range ce.replayMap {
-			if time.Now().UTC().Sub(e.presentedTime) > d {
-				delete(ce.replayMap, k)
-			}
-		}
-		if len(ce.replayMap) == 0 {
-			delete(c.entries, ke)
-		}
+// GetReplayCache returns the process-wide replay cache.
+// If SetReplayCache was not called, a default in-memory cache is lazily created.
+func GetReplayCache(maxClockSkew time.Duration) rcache.Cache {
+	globalCacheMu.Lock()
+	defer globalCacheMu.Unlock()
+
+	if !globalCacheSet {
+		replayCache = rcache.New(maxClockSkew)
+		globalCacheSet = true
 	}
+
+	return replayCache
 }
 
-// IsReplay tests if the Authenticator provided is a replay within the duration defined. If this is not a replay add the entry to the cache for tracking.
-func (c *Cache) IsReplay(sname types.PrincipalName, a types.Authenticator) bool {
-	ct := a.CTime.Add(time.Duration(a.Cusec) * time.Microsecond)
-	if e, ok := c.getClientEntry(a.CName, ct); ok {
-		if e.sName.Equal(sname) {
-			return true
-		}
-	}
-	c.AddEntry(sname, a)
-	return false
+// replayCacheKey derives the replay cache lookup key from Kerberos types.
+func replayCacheKey(sname, cname types.PrincipalName, cTime time.Time) string {
+	client := url.PathEscape(cname.PrincipalNameString())
+	service := url.PathEscape(sname.PrincipalNameString())
+	return fmt.Sprintf("%s/%s/%s", client, service, strconv.FormatInt(cTime.UnixNano(), 10))
 }

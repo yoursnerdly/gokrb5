@@ -1,11 +1,15 @@
 package service
 
 import (
+	"context"
+	"errors"
+	"fmt"
 	"time"
 
 	"github.com/jcmturner/gokrb5/v8/credentials"
 	"github.com/jcmturner/gokrb5/v8/iana/errorcode"
 	"github.com/jcmturner/gokrb5/v8/messages"
+	"github.com/jcmturner/gokrb5/v8/rcache"
 )
 
 // VerifyAPREQ verifies an AP_REQ sent to the service. Returns a boolean for if the AP_REQ is valid and the client's principal name and realm.
@@ -23,9 +27,14 @@ func VerifyAPREQ(APReq *messages.APReq, s *Settings) (bool, *credentials.Credent
 
 	// Check for replay
 	rc := GetReplayCache(s.MaxClockSkew())
-	if rc.IsReplay(APReq.Ticket.SName, APReq.Authenticator) {
-		return false, creds,
-			messages.NewKRBError(APReq.Ticket.SName, APReq.Ticket.Realm, errorcode.KRB_AP_ERR_REPEAT, "replay detected")
+	ct := APReq.Authenticator.CTime.Add(time.Duration(APReq.Authenticator.Cusec) * time.Microsecond)
+	key := replayCacheKey(APReq.Ticket.SName, APReq.Authenticator.CName, ct)
+	if err := rc.Add(context.Background(), key, s.MaxClockSkew()); err != nil {
+		if errors.Is(err, rcache.ErrAlreadyExists) {
+			return false, creds,
+				messages.NewKRBError(APReq.Ticket.SName, APReq.Ticket.Realm, errorcode.KRB_AP_ERR_REPEAT, "replay detected")
+		}
+		return false, creds, fmt.Errorf("replay cache error: %w", err)
 	}
 
 	c := credentials.NewFromPrincipalName(APReq.Authenticator.CName, APReq.Authenticator.CRealm)
