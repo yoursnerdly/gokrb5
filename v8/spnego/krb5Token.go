@@ -10,7 +10,6 @@ import (
 	"github.com/jcmturner/gofork/encoding/asn1"
 	"github.com/jcmturner/gokrb5/v8/asn1tools"
 	"github.com/jcmturner/gokrb5/v8/client"
-	"github.com/jcmturner/gokrb5/v8/credentials"
 	"github.com/jcmturner/gokrb5/v8/gssapi"
 	"github.com/jcmturner/gokrb5/v8/iana/chksumtype"
 	"github.com/jcmturner/gokrb5/v8/iana/msgtype"
@@ -52,7 +51,10 @@ func (m *KRB5Token) Marshal() ([]byte, error) {
 			return []byte{}, fmt.Errorf("error marshalling AP_REQ for MechToken: %v", err)
 		}
 	case TOK_ID_KRB_AP_REP:
-		return []byte{}, errors.New("marshal of AP_REP GSSAPI MechToken not supported by gokrb5")
+		tb, err = m.APRep.Marshal()
+		if err != nil {
+			return []byte{}, fmt.Errorf("error marshalling AP_REP for MechToken: %v", err)
+		}
 	case TOK_ID_KRB_ERROR:
 		return []byte{}, errors.New("marshal of KRB_ERROR GSSAPI MechToken not supported by gokrb5")
 	}
@@ -116,7 +118,8 @@ func (m *KRB5Token) Verify() (bool, gssapi.Status) {
 			return false, gssapi.Status{Code: gssapi.StatusDefectiveCredential, Message: "KRB5_AP_REQ token not valid"}
 		}
 		m.context = context.Background()
-		m.context = context.WithValue(m.context, ctxCredentials, creds)
+		m.context = context.WithValue(m.context, CtxCredentialsKey{}, creds)
+		m.context = context.WithValue(m.context, CtxAPReqKey{}, m.APReq)
 		return true, gssapi.Status{Code: gssapi.StatusComplete}
 	case TOK_ID_KRB_AP_REP:
 		// Client side
@@ -163,12 +166,27 @@ func (m *KRB5Token) Context() context.Context {
 // NewKRB5TokenAPREQ creates a new KRB5 token with AP_REQ
 func NewKRB5TokenAPREQ(cl *client.Client, tkt messages.Ticket, sessionKey types.EncryptionKey, GSSAPIFlags []int, APOptions []int) (KRB5Token, error) {
 	// TODO consider providing the SPN rather than the specific tkt and key and get these from the krb client.
+	return NewKRB5TokenProxyAPREQ(tkt, sessionKey, cl.Credentials.Domain(), cl.Credentials.CName(), GSSAPIFlags, APOptions)
+}
+
+// NewKRB5TokenAPREP creates a new KRB5 token with AP_REP
+func NewKRB5TokenAPREP(aprep messages.APRep) (KRB5Token, error) {
+	var m KRB5Token
+	m.OID = gssapi.OIDKRB5.OID()
+	tb, _ := hex.DecodeString(TOK_ID_KRB_AP_REP)
+	m.tokID = tb
+	m.APRep = aprep
+	return m, nil
+}
+
+// NewKRB5TokenProxyAPREQ creates a new KRB5 token with AP_REQ for a proxy ticket.
+func NewKRB5TokenProxyAPREQ(tkt messages.Ticket, sessionKey types.EncryptionKey, realm string, cname types.PrincipalName, GSSAPIFlags []int, APOptions []int) (KRB5Token, error) {
 	var m KRB5Token
 	m.OID = gssapi.OIDKRB5.OID()
 	tb, _ := hex.DecodeString(TOK_ID_KRB_AP_REQ)
 	m.tokID = tb
 
-	auth, err := krb5TokenAuthenticator(cl.Credentials, GSSAPIFlags)
+	auth, err := krb5TokenAuthenticator(realm, cname, GSSAPIFlags)
 	if err != nil {
 		return m, err
 	}
@@ -188,9 +206,9 @@ func NewKRB5TokenAPREQ(cl *client.Client, tkt messages.Ticket, sessionKey types.
 }
 
 // krb5TokenAuthenticator creates a new kerberos authenticator for kerberos MechToken
-func krb5TokenAuthenticator(creds *credentials.Credentials, flags []int) (types.Authenticator, error) {
+func krb5TokenAuthenticator(realm string, cname types.PrincipalName, flags []int) (types.Authenticator, error) {
 	//RFC 4121 Section 4.1.1
-	auth, err := types.NewAuthenticator(creds.Domain(), creds.CName())
+	auth, err := types.NewAuthenticator(realm, cname)
 	if err != nil {
 		return auth, krberror.Errorf(err, krberror.KRBMsgError, "error generating new authenticator")
 	}

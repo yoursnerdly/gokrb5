@@ -57,7 +57,7 @@ func TestKRB5Token_newAuthenticatorWithSubkeyGeneration(t *testing.T) {
 	creds.SetCName(types.PrincipalName{NameType: nametype.KRB_NT_PRINCIPAL, NameString: testdata.TEST_PRINCIPALNAME_NAMESTRING})
 	var etypeID int32 = 18
 	keyLen := 32 // etypeID 18 refers to AES256 -> 32 bytes key
-	a, err := krb5TokenAuthenticator(creds, []int{gssapi.ContextFlagInteg, gssapi.ContextFlagConf})
+	a, err := krb5TokenAuthenticator(creds.Realm(), creds.CName(), []int{gssapi.ContextFlagInteg, gssapi.ContextFlagConf})
 	if err != nil {
 		t.Fatalf("Error creating authenticator: %v", err)
 	}
@@ -85,7 +85,7 @@ func TestKRB5Token_newAuthenticator(t *testing.T) {
 	t.Parallel()
 	creds := credentials.New("hftsai", testdata.TEST_REALM)
 	creds.SetCName(types.PrincipalName{NameType: nametype.KRB_NT_PRINCIPAL, NameString: testdata.TEST_PRINCIPALNAME_NAMESTRING})
-	a, err := krb5TokenAuthenticator(creds, []int{gssapi.ContextFlagInteg, gssapi.ContextFlagConf})
+	a, err := krb5TokenAuthenticator(creds.Realm(), creds.CName(), []int{gssapi.ContextFlagInteg, gssapi.ContextFlagConf})
 	if err != nil {
 		t.Fatalf("Error creating authenticator: %v", err)
 	}

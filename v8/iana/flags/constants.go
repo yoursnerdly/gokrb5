@@ -20,6 +20,7 @@ const (
 	RequestAnonymous       = 12
 	TransitedPolicyChecked = 12
 	OKAsDelegate           = 13
+	CnameInAddlTkt         = 14 // Microsoft extension (MS-SFU)
 	EncPARep               = 15
 	Canonicalize           = 15
 	DisableTransitedCheck  = 26
