@@ -8,15 +8,16 @@ import (
 
 // Error type descriptions.
 const (
-	separator       = " < "
-	EncodingError   = "Encoding_Error"
-	NetworkingError = "Networking_Error"
-	DecryptingError = "Decrypting_Error"
-	EncryptingError = "Encrypting_Error"
-	ChksumError     = "Checksum_Error"
-	KRBMsgError     = "KRBMessage_Handling_Error"
-	ConfigError     = "Configuration_Error"
-	KDCError        = "KDC_Error"
+	separator                = " < "
+	EncodingError            = "Encoding_Error"
+	NetworkingError          = "Networking_Error"
+	DecryptingError          = "Decrypting_Error"
+	EncryptingError          = "Encrypting_Error"
+	ChksumError              = "Checksum_Error"
+	KRBMsgError              = "KRBMessage_Handling_Error"
+	PAFXFASTUnsupportedError = "PAFXFAST_Unsupported_Error"
+	ConfigError              = "Configuration_Error"
+	KDCError                 = "KDC_Error"
 )
 
 // Krberror is an error type for gokrb5
