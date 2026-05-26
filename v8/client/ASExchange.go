@@ -17,8 +17,23 @@ func (cl *Client) ASExchange(realm string, ASReq messages.ASReq, referral int) (
 		return messages.ASRep{}, krberror.Errorf(err, krberror.ConfigError, "AS Exchange cannot be performed")
 	}
 
+	usePAFXFAST := cl.usePAFXFASTOnInitialASExchangeAttempt()
+	ASRep, err := cl.asExchangeAttempt(realm, ASReq, referral, usePAFXFAST)
+	if err == nil {
+		return ASRep, nil
+	}
+
+	if !cl.shouldRetryASExchangeWithoutPAFXFAST(usePAFXFAST, err) {
+		return messages.ASRep{}, err
+	}
+
+	cl.Log("AS Exchange Error: KDC did not support PA_FX_FAST negotiation; retrying AS exchange without PA_FX_FAST")
+	return cl.asExchangeAttempt(realm, ASReq, referral, false)
+}
+
+func (cl *Client) asExchangeAttempt(realm string, ASReq messages.ASReq, referral int, usePAFXFAST bool) (messages.ASRep, error) {
 	// Set PAData if required
-	err := setPAData(cl, nil, &ASReq)
+	err := setPAData(cl, nil, &ASReq, usePAFXFAST)
 	if err != nil {
 		return messages.ASRep{}, krberror.Errorf(err, krberror.KRBMsgError, "AS Exchange Error: issue with setting PAData on AS_REQ")
 	}
@@ -36,7 +51,7 @@ func (cl *Client) ASExchange(realm string, ASReq messages.ASReq, referral int) (
 			case errorcode.KDC_ERR_PREAUTH_REQUIRED, errorcode.KDC_ERR_PREAUTH_FAILED:
 				// From now on assume this client will need to do this pre-auth and set the PAData
 				cl.settings.assumePreAuthentication = true
-				err = setPAData(cl, &e, &ASReq)
+				err = setPAData(cl, &e, &ASReq, usePAFXFAST)
 				if err != nil {
 					return messages.ASRep{}, krberror.Errorf(err, krberror.KRBMsgError, "AS Exchange Error: failed setting AS_REQ PAData for pre-authentication required")
 				}
@@ -75,9 +90,30 @@ func (cl *Client) ASExchange(realm string, ASReq messages.ASReq, referral int) (
 	return ASRep, nil
 }
 
+func (cl *Client) usePAFXFASTOnInitialASExchangeAttempt() bool {
+	if cl.settings.AutoPAFXFAST() {
+		return true
+	}
+	return !cl.settings.DisablePAFXFAST()
+}
+
+func (cl *Client) shouldRetryASExchangeWithoutPAFXFAST(usePAFXFAST bool, err error) bool {
+	return cl.settings.AutoPAFXFAST() && usePAFXFAST && isPAFXFASTUnsupportedError(err)
+}
+
+func isPAFXFASTUnsupportedError(err error) bool {
+	e, ok := err.(krberror.Krberror)
+	if !ok {
+		return false
+	}
+	return e.RootCause == krberror.PAFXFASTUnsupportedError
+}
+
 // setPAData adds pre-authentication data to the AS_REQ.
-func setPAData(cl *Client, krberr *messages.KRBError, ASReq *messages.ASReq) error {
-	if !cl.settings.DisablePAFXFAST() {
+func setPAData(cl *Client, krberr *messages.KRBError, ASReq *messages.ASReq, usePAFXFAST bool) error {
+	// Remove any existing PAData of type PA_REQ_ENC_PA_REP from the previous attempt if any.
+	ASReq.PAData = removePADataType(ASReq.PAData, patype.PA_REQ_ENC_PA_REP)
+	if usePAFXFAST {
 		pa := types.PAData{PADataType: patype.PA_REQ_ENC_PA_REP}
 		ASReq.PAData = append(ASReq.PAData, pa)
 	}
@@ -132,15 +168,23 @@ func setPAData(cl *Client, krberr *messages.KRBError, ASReq *messages.ASReq) err
 			PADataValue: pb,
 		}
 		// Look for and delete any exiting patype.PA_ENC_TIMESTAMP
-		for i, pa := range ASReq.PAData {
-			if pa.PADataType == patype.PA_ENC_TIMESTAMP {
-				ASReq.PAData[i] = ASReq.PAData[len(ASReq.PAData)-1]
-				ASReq.PAData = ASReq.PAData[:len(ASReq.PAData)-1]
-			}
-		}
+		ASReq.PAData = removePADataType(ASReq.PAData, patype.PA_ENC_TIMESTAMP)
 		ASReq.PAData = append(ASReq.PAData, pa)
 	}
 	return nil
+}
+
+func removePADataType(pas types.PADataSequence, paType int32) types.PADataSequence {
+	i := 0
+	for i < len(pas) {
+		if pas[i].PADataType == paType {
+			pas[i] = pas[len(pas)-1]
+			pas = pas[:len(pas)-1]
+			continue
+		}
+		i++
+	}
+	return pas
 }
 
 // preAuthEType establishes what encryption type to use for pre-authentication from the KRBError returned from the KDC.

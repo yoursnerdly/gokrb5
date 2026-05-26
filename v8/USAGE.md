@@ -45,13 +45,12 @@ cl.Destroy()
 ```
 
 #### Active Directory KDC and FAST negotiation
-Active Directory does not commonly support FAST negotiation so you will need to disable this on the client.
-If this is the case you will see this error:
+By default the client automatically attempts FAST negotiation first and, if the KDC does not support it, retries once without FAST.
+If FAST negotiation is not supported you may see this error before the automatic retry occurs:
 ```KDC did not respond appropriately to FAST negotiation```
-To resolve this disable PA-FX-Fast on the client before performing Login().
-This is done with one of the optional client settings as shown below:
+If you want to disable this automatic behavior and force FAST off, set both options as shown below:
 ```go
-cl := client.NewWithPassword("username", "REALM.COM", "password", cfg, client.DisablePAFXFAST(true))
+cl := client.NewWithPassword("username", "REALM.COM", "password", cfg, client.AutoPAFXFAST(false), client.DisablePAFXFAST(true))
 ```
 
 #### Authenticate to a Service

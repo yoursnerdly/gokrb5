@@ -271,7 +271,7 @@ func (k *ASRep) Verify(cfg *config.Config, creds *credentials.Credentials, asReq
 	// RFC 6806 https://tools.ietf.org/html/rfc6806.html#section-11
 	if asReq.PAData.Contains(patype.PA_REQ_ENC_PA_REP) && types.IsFlagSet(&k.DecryptedEncPart.Flags, flags.EncPARep) {
 		if len(k.DecryptedEncPart.EncPAData) < 2 || !k.DecryptedEncPart.EncPAData.Contains(patype.PA_FX_FAST) {
-			return false, krberror.NewErrorf(krberror.KRBMsgError, "KDC did not respond appropriately to FAST negotiation")
+			return false, krberror.NewErrorf(krberror.PAFXFASTUnsupportedError, "KDC did not respond appropriately to FAST negotiation")
 		}
 		for _, pa := range k.DecryptedEncPart.EncPAData {
 			if pa.PADataType == patype.PA_REQ_ENC_PA_REP {
