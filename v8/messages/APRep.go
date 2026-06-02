@@ -47,7 +47,6 @@ func NewAPRep(req APReq) (APRep, error) {
 		SequenceNumber: seq.Int64() & 0x3fffffff,
 		Subkey:         req.Authenticator.SubKey, // confirm request subkey if any.
 	}
-	fmt.Printf("Creating EncAPRepPart: %#v\n", encAPRepPart)
 	b, err := encAPRepPart.Marshal()
 	if err != nil {
 		return a, err
